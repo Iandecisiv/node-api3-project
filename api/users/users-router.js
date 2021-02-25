@@ -2,40 +2,134 @@ const express = require('express');
 
 const router = express.Router();
 
+db = require('./users-model');
+posts = require('../posts/posts-model');
+
+router.post('/', validateUser, (req, res) => {
+  const { userName } = req.body;
+
+  db.insert({ name: userName })
+    .then(user => {
+      res.status(200).json(user);
+    })
+    .catch(err => {
+      res.status(500).json({ message: "Could not add user" })
+    })
+});
+
+router.post('/:id/posts', validateUserId, validatePost, (req, res) => {
+  posts.insert({ user_id: req.params.id, text: req.body.text })
+    .then(post => {
+      res.status(200).json({ message: post })
+    })
+    .catch(err => {
+      res.status(500).json({ message: "Could not post" })
+    })
+});
+
+// Do we really need MW here? No, we do not.
 router.get('/', (req, res) => {
-  // RETURN AN ARRAY WITH ALL THE USERS
+  db.get()
+    .then(users => {
+      res.status(200).json(users)
+    })
+    .catch(err => {
+      res.status(500).json({ message: "Couldn't get from Data base" })
+    })
 });
 
-router.get('/:id', (req, res) => {
-  // RETURN THE USER OBJECT
-  // this needs a middleware to verify user id
+router.get('/:id', validateUserId, (req, res) => {
+  let id = req.params.id;
+
+  db.getById(id)
+    .then(user => {
+      res.status(200).json(user);
+    })
+    .catch(err => {
+      res.status(500).json({ error: "The user could not be retrieved." });
+    })
 });
 
-router.post('/', (req, res) => {
-  // RETURN THE NEWLY CREATED USER OBJECT
-  // this needs a middleware to check that the request body is valid
+router.get('/:id/posts', validateUserId, (req, res) => {
+  db.getUserPosts(req.user.id)
+    .then(posts => {
+      if (posts.length > 0) {
+        res.status(200).json(posts);
+      }
+      else {
+        res.status(400).json({ message: "This user has no posts" });
+      }
+    })
+    .catch(err => {
+      res.status(500).json({ message: "Couldn't get posts" })
+    })
 });
 
-router.put('/:id', (req, res) => {
-  // RETURN THE FRESHLY UPDATED USER OBJECT
-  // this needs a middleware to verify user id
-  // and another middleware to check that the request body is valid
+router.delete('/:id', validateUserId, (req, res) => {
+  db.remove(req.user.id)
+    .then(() => {
+      res.status(200).json({ message: `user with id ${req.user.id} was removed` })
+    })
+    .catch(err => {
+      res.status(500).json({ message: "Couldn't delete the user" })
+    })
 });
 
-router.delete('/:id', (req, res) => {
-  // RETURN THE FRESHLY DELETED USER OBJECT
-  // this needs a middleware to verify user id
+router.put('/:id', validateUserId, validateUser, (req, res) => {
+  db.update(req.user.id, { name: req.body.name })
+    .then(() => {
+      db.getById(req.user.id)
+        .then(user => {
+          res.status(200).json(user);
+        })
+        .catch(err => {
+          res.status(500).json({ message: "Could not get updated user." });
+        });
+    })
+    .catch(err => {
+      res.status(500).json({ message: "Could not update user." });
+    });
 });
 
-router.get('/:id/posts', (req, res) => {
-  // RETURN THE ARRAY OF USER POSTS
-  // this needs a middleware to verify user id
-});
+function validateUserId(req, res, next) {
+  db.getById(req.params.id)
+      .then(users => {
+          if (users) {
+          req.user = users;
+          next();
+          }
+          else {
+          res.status(500).json({ message: "No user with this ID exists" })
+          }
+      })
+      .catch(error => {
+          res.status(500).json({ message: "need to give an ID"})
+      })
+};
 
-router.post('/:id/posts', (req, res) => {
-  // RETURN THE NEWLY CREATED USER POST
-  // this needs a middleware to verify user id
-  // and another middleware to check that the request body is valid
-});
+function validateUser(req, res, next) {
+  if (req.body) {
+      if (req.body.name) {
+          next();
+      }
+      else {
+          res.status(400).json({ message: "Missing name" })
+      }
+  } else {
+      res.status(400).json({ message: "Missing user data" })
+  }
+}
 
-// do not forget to export the router
+function validatePost(req, res, next) {
+  if (req.body) {
+      if (req.body.text) {
+          next();
+      } else {
+          res.status(400).json({ message: "Missing required text field" });
+      }
+  } else {
+      res.status(400).json({ message: "Missing post data" });
+  }
+};
+
+module.exports = router;
